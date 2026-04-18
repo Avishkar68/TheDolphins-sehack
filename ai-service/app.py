@@ -377,14 +377,24 @@ def analyze():
                 })
             
             if score > 0:
-                # Deduplicate affected_fields
-                unique_fields = list(set(affected_fields))
+                # Calculate contribution percentages
+                contributions = {}
+                for reason in reasons:
+                    if reason == "anomaly": weight = 40
+                    elif reason == "high amount": weight = 20
+                    elif reason == "frequent vendor": weight = 15
+                    elif reason == "frequent approver": weight = 10
+                    elif reason == "shared bank account": weight = 15
+                    else: weight = 10
+                    contributions[reason] = round((weight / score) * 100, 1)
+
                 risk_scores.append({
                     "row_index": ri,
                     "transaction_ref": tx_ref,
                     "score": int(score),
                     "reasons": reasons,
-                    "affected_fields": unique_fields
+                    "contribution": contributions,
+                    "affected_fields": list(set(affected_fields))
                 })
 
         # Reconciliation Logic
@@ -455,6 +465,26 @@ def analyze():
                             "Category": str(p_row.get('Category', 'N/A'))
                         }
                     })
+            # Complete Reconciliation List (Side-by-Side)
+            reconciliation_list = []
+            for _, row in recon_df.iterrows():
+                status = "missing"
+                if pd.notna(row['Bank_Amount']):
+                    if row['Amount'] == row['Bank_Amount']:
+                        status = "matched"
+                    else:
+                        status = "partial"
+                
+                reconciliation_list.append({
+                    "ref": str(row['Transaction_Ref']),
+                    "ledger_amount": float(row['Amount']),
+                    "bank_amount": float(row['Bank_Amount']) if pd.notna(row['Bank_Amount']) else None,
+                    "vendor": str(row.get('Vendor_Name', 'N/A')),
+                    "category": str(row.get('Category', 'N/A')),
+                    "status": status,
+                    "row_index": int(row['row_index'])
+                })
+
         # Sort risk scores descending
         risk_scores = sorted(risk_scores, key=lambda x: x['score'], reverse=True)
 
@@ -506,6 +536,7 @@ def analyze():
             "anomalies": sorted(anomalies_list, key=lambda x: x['anomaly_score'])[:50],
             "risk_scores": risk_scores[:50],
             "issues": issues_list[:100],
+            "reconciliation_list": reconciliation_list[:200], # Top 200 matches
             "forensic": forensic_data
         }), 200
 

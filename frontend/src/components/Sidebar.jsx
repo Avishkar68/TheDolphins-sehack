@@ -18,8 +18,10 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
     { id: 'forensic', icon: Map, label: 'Relational Graph' },
     { id: 'benford', icon: BarChart, label: 'Frequency Stats' },
     { id: 'recon', icon: Scale, label: 'Recon Audit' },
+    { id: 'bank-comparison', icon: FileText, label: 'Bank Comparison' },
     { id: 'resilience', icon: Shield, label: 'Resilience Test' },
     { id: 'memo', icon: MessageSquare, label: 'Audit Sidekick' },
+    { id: 'explain', icon: Search, label: 'Explainable Risk' },
   ];
 
   return (

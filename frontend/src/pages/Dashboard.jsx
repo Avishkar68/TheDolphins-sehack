@@ -7,6 +7,8 @@ import ChartsSection from '../components/ChartsSection';
 import AnomalyTable from '../components/AnomalyTable';
 import PreviewTable from '../components/PreviewTable';
 import IntegrityMonitor from '../components/IntegrityMonitor';
+import RiskExplainer from '../components/RiskExplainer';
+import BankReconView from '../components/BankReconView';
 import FrequencyCharts from '../components/FrequencyCharts';
 import MonteCarloPlot from '../components/MonteCarloPlot';
 import AuditMemoAssistant from '../components/AuditMemoAssistant';
@@ -218,6 +220,14 @@ const Dashboard = () => {
       case 'memo':
         if (!data) return <Placeholder title="AI Audit Sidekick" />;
         return <AuditMemoAssistant summary={data.summary} issues={data.issues} />;
+
+      case 'explain':
+        if (!data) return <Placeholder title="Explainable Risk Insights" icon={Search} />;
+        return <RiskExplainer riskScores={data.risk_scores} />;
+
+      case 'bank-comparison':
+        if (!data) return <Placeholder title="Bank Statement Reconciliation" icon={FileText} />;
+        return <BankReconView reconciliationList={data.reconciliation_list} />;
 
       default:
         return null;
