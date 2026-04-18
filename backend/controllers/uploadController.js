@@ -94,10 +94,7 @@ const uploadFiles = async (req, res) => {
       const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
 
       const validation = validateDataset(data, type);
-      if (!validation.isValid) {
-        throw new Error(`Validation failed for ${type}: Missing columns [${validation.missingFields.join(', ')}]`);
-      }
-
+      
       const cleaned = cleanData(data, type);
       return cleaned;
     };

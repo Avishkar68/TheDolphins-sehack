@@ -75,27 +75,52 @@ const IntegrityMonitor = ({ readiness }) => {
           </div>
         </div>
 
-        {/* Issue Categorization */}
+        {/* Issue Categorization & Remediations */}
         <div className="bg-[#11141b]/30 backdrop-blur-xl border border-white/5 rounded-3xl p-8 space-y-6">
           <h3 className="text-lg font-bold text-white flex items-center">
             <AlertCircle className="w-5 h-5 mr-3 text-red-400" />
-            Integrity Findings
+            Integrity Findings & Auto-Fixes
           </h3>
-          <div className="space-y-3">
-            {readiness.issues.length > 0 ? readiness.issues.map((issue, idx) => (
-              <div key={idx} className="flex items-center justify-between p-4 bg-white/[0.02] border border-white/5 rounded-2xl">
-                <div className="flex items-center space-x-3">
-                  <div className={`w-2 h-2 rounded-full ${issue.count > 0 ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-                  <span className="text-sm font-bold text-gray-300">{issue.category}</span>
+          
+          <div className="space-y-4">
+            {/* Auto-Corrections (Remediations) */}
+            {readiness.remediations && readiness.remediations.length > 0 && (
+                <div className="space-y-2">
+                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest pl-1">Forensic Auto-Corrections</span>
+                    <div className="space-y-2">
+                        {readiness.remediations.map((rem, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-3 bg-indigo-500/5 border border-indigo-500/10 rounded-xl">
+                                <div className="flex items-center space-x-3">
+                                    <Zap className="w-3 h-3 text-indigo-400" />
+                                    <span className="text-[11px] font-bold text-gray-300">{rem.action}</span>
+                                </div>
+                                <span className="text-[9px] font-black text-indigo-500/50 uppercase">{rem.type}</span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
-                <span className="text-xs font-black font-mono text-gray-500 uppercase">{issue.count} Found IN {issue.type}</span>
-              </div>
-            )) : (
-              <div className="flex flex-col items-center justify-center py-6 space-y-2 opacity-50">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-                <span className="text-xs font-bold text-gray-500 uppercase tracking-widest">No structural issues detected</span>
-              </div>
             )}
+
+            {/* Static Issues */}
+            <div className="space-y-2">
+                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest pl-1">Structural Warnings</span>
+                <div className="space-y-2">
+                    {readiness.issues.length > 0 ? readiness.issues.map((issue, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                        <div className="flex items-center space-x-3">
+                        <div className={`w-1.5 h-1.5 rounded-full ${issue.count > 0 ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+                        <span className="text-[11px] font-bold text-gray-300">{issue.category}</span>
+                        </div>
+                        <span className="text-[9px] font-black font-mono text-gray-600 uppercase">{issue.count} Found in {issue.type}</span>
+                    </div>
+                    )) : (
+                    <div className="flex flex-col items-center justify-center py-4 space-y-2 opacity-30">
+                        <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">No structural issues</span>
+                    </div>
+                    )}
+                </div>
+            </div>
           </div>
         </div>
       </div>

@@ -12,8 +12,8 @@ app = Flask(__name__)
 
 # --- Forensic Helper Functions ---
 
-def calculate_readiness(ledger_df, bank_df):
-    """Calculates data integrity readiness score and issues."""
+def calculate_readiness(ledger_df, bank_df, remediations=[]):
+    """Calculates a forensic readiness score based on evidence quality."""
     issues = []
     
     # Ledger Checks
@@ -31,14 +31,15 @@ def calculate_readiness(ledger_df, bank_df):
         issues.append({"category": "Null Values", "count": int(bank_nulls), "type": "bank"})
         
     # Readiness Score Calculation (0-100)
-    # Simple penalty based on nulls and duplicates relative to size
+    # Penalize for nulls, duplicates, AND remediations
     total_size = len(ledger_df) + len(bank_df)
-    penalties = (ledger_nulls + bank_nulls + ledger_dupes) / (total_size * 5) # normalize
+    penalties = (ledger_nulls + bank_nulls + ledger_dupes + len(remediations) * 2) / (total_size * 5)
     score = max(0, 100 * (1 - penalties))
     
     return {
         "score": round(score, 1),
         "issues": issues,
+        "remediations": remediations,
         "metrics": {
             "ledger_completeness": round((1 - ledger_nulls/max(1, len(ledger_df)*len(ledger_df.columns))) * 100, 1),
             "bank_completeness": round((1 - bank_nulls/max(1, len(bank_df)*len(bank_df.columns))) * 100, 1)
@@ -214,29 +215,71 @@ def analyze():
         ledger_df = pd.DataFrame(data['ledger'])
         bank_df = pd.DataFrame(data['bank'])
 
+        remediations = []
+
+        def clean_and_impute(df, df_type, required_cols):
+            # 1. Fuzzy Column Mapping
+            mapping = {
+                'Transaction_Ref': ['ref', 'tx id', 'txn', 'transaction', 'reference'],
+                'Amount': ['amt', 'value', 'price', 'expenditure'],
+                'Vendor_Name': ['vendor', 'supplier', 'payee'],
+                'Approver_ID': ['approver', 'mgr', 'manager']
+            }
+            
+            for standard, variations in mapping.items():
+                if standard not in df.columns:
+                    for var in variations:
+                        match = [c for c in df.columns if var in c.lower()]
+                        if match:
+                            df.rename(columns={match[0]: standard}, inplace=True)
+                            remediations.append({"type": df_type, "action": f"Mapped '{match[0]}' to '{standard}'"})
+                            break
+            
+            # 2. Structural Fix (Missing Columns)
+            for col in required_cols:
+                if col not in df.columns:
+                    if col == 'Transaction_Ref':
+                        df[col] = [f"AUTO-{i+1:03d}" for i in range(len(df))]
+                        remediations.append({"type": df_type, "action": "Generated unique Transaction IDs"})
+                    else:
+                        df[col] = 0 if col == 'Amount' else "N/A"
+                        remediations.append({"type": df_type, "action": f"Created missing column: {col}"})
+
+            # 3. Handle Nulls & Numeric Sanitization
+            for col in df.columns:
+                # Specialized cleaning for Amount fields
+                if col in ['Amount', 'Bank_Amount']:
+                    # Strip everything except digits, decimals, and signs
+                    original_nulls = df[col].isnull().sum()
+                    df[col] = df[col].astype(str).str.replace(r'[^\d.-]', '', regex=True)
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+                    
+                    cleaned_count = (df[col].isnull().sum() - original_nulls)
+                    if cleaned_count > 0:
+                        remediations.append({"type": df_type, "action": f"Cleaned currency/format in {col}"})
+                    
+                    df[col].fillna(0.0, inplace=True)
+                else:
+                    count = df[col].isnull().sum()
+                    if count > 0:
+                        if df[col].dtype == object:
+                            df[col].fillna("[N/A]", inplace=True)
+                        else:
+                            df[col].fillna(0, inplace=True)
+                        remediations.append({"type": df_type, "action": f"Filled {count} nulls in {col}"})
+            
+            return df
+
+        ledger_df = clean_and_impute(ledger_df, "ledger", ['Transaction_Ref', 'Amount'])
+        bank_df = clean_and_impute(bank_df, "bank", ['Transaction_Ref', 'Bank_Amount' if 'Bank_Amount' in bank_df.columns else 'Amount'])
+        
+        # Ensure Bank_Amount exists for logic consistency
+        if 'Bank_Amount' not in bank_df.columns and 'Amount' in bank_df.columns:
+            bank_df.rename(columns={'Amount': 'Bank_Amount'}, inplace=True)
+
         # Add row_index (1-indexed)
         ledger_df['row_index'] = range(1, len(ledger_df) + 1)
         bank_df['row_index'] = range(1, len(bank_df) + 1)
-
-        # Basic Validation: Ledger
-        required_ledger_cols = ['Transaction_Ref', 'Amount']
-        missing_ledger = [col for col in required_ledger_cols if col not in ledger_df.columns]
-        
-        if missing_ledger:
-            return jsonify({
-                "success": False,
-                "error": f"Missing mandatory columns in Ledger: {', '.join(missing_ledger)}"
-            }), 400
-
-        # Basic Validation: Bank
-        required_bank_cols = ['Transaction_Ref']
-        missing_bank = [col for col in required_bank_cols if col not in bank_df.columns]
-        
-        if missing_bank:
-            return jsonify({
-                "success": False,
-                "error": f"Missing mandatory columns in Bank: {', '.join(missing_bank)}"
-            }), 400
 
         # Anomaly Detection Logic
         anomalies_list = []
@@ -490,7 +533,7 @@ def analyze():
 
         # --- New LedgerSpy Forensic Integration ---
         forensic_data = {
-            "readiness": calculate_readiness(ledger_df, bank_df),
+            "readiness": calculate_readiness(ledger_df, bank_df, remediations),
             "benford": compute_benford(ledger_df),
             "fuzzy_entities": find_fuzzy_entities(ledger_df),
             "relational_map": build_relational_graph(ledger_df),
