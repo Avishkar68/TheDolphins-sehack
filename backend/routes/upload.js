@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { uploadFields } = require('../middleware/uploadMiddleware');
-const { uploadFiles } = require('../controllers/uploadController');
+const { uploadFiles, getPreview } = require('../controllers/uploadController');
 
 /**
  * @route POST /api/upload
@@ -9,5 +9,12 @@ const { uploadFiles } = require('../controllers/uploadController');
  * @access Public
  */
 router.post('/', uploadFields, uploadFiles);
+
+/**
+ * @route GET /api/upload/preview
+ * @desc Get paginated preview of uploaded data
+ * @access Public
+ */
+router.get('/preview', getPreview);
 
 module.exports = router;

@@ -2,6 +2,12 @@ const xlsx = require('xlsx');
 const axios = require('axios');
 const validateDataset = require('../utils/validateDataset');
 
+// In-memory cache for pagination (clears on server restart)
+let dataCache = {
+  ledger: [],
+  bank: []
+};
+
 /**
  * Normalizes and cleans the data
  * @param {Array} data 
@@ -11,8 +17,8 @@ const validateDataset = require('../utils/validateDataset');
 const cleanData = (data, type) => {
   return data
     .filter(row => Object.values(row).some(val => val !== null && val !== undefined && val !== '')) // Remove empty rows
-    .map(row => {
-      const normalizedRow = {};
+    .map((row, index) => {
+      const normalizedRow = { row_index: index + 1 };
       for (const [key, value] of Object.entries(row)) {
         let cleanValue = typeof value === 'string' ? value.trim() : value;
 
@@ -39,6 +45,36 @@ const cleanData = (data, type) => {
       }
       return normalizedRow;
     });
+};
+
+const getPreview = async (req, res) => {
+  const { type, page = 1, limit = 100 } = req.query;
+  const dataset = dataCache[type];
+
+  if (!dataset || dataset.length === 0) {
+    return res.status(404).json({
+      success: false,
+      message: 'No data found in cache. Please upload files first.'
+    });
+  }
+
+  const pageNum = parseInt(page);
+  const limitNum = parseInt(limit);
+  const totalRows = dataset.length;
+  const totalPages = Math.ceil(totalRows / limitNum);
+  
+  const startIndex = (pageNum - 1) * limitNum;
+  const endIndex = pageNum * limitNum;
+  const data = dataset.slice(startIndex, endIndex);
+
+  return res.status(200).json({
+    success: true,
+    total_rows: totalRows,
+    page: pageNum,
+    limit: limitNum,
+    total_pages: totalPages,
+    data
+  });
 };
 
 const uploadFiles = async (req, res) => {
@@ -70,6 +106,11 @@ const uploadFiles = async (req, res) => {
     try {
       ledgerData = processFile(req.files.ledger[0], 'ledger');
       bankData = processFile(req.files.bank[0], 'bank');
+      
+      // Update cache
+      dataCache.ledger = ledgerData;
+      dataCache.bank = bankData;
+      
     } catch (err) {
       return res.status(400).json({
         success: false,
@@ -103,6 +144,7 @@ const uploadFiles = async (req, res) => {
       },
       anomalies: [],
       risk_scores: [],
+      issues: [],
       preview: {
         ledger_preview: ledgerData.slice(0, 5),
         bank_preview: bankData.slice(0, 5)
@@ -130,6 +172,7 @@ const uploadFiles = async (req, res) => {
       responseData.charts = ai.charts;
       responseData.anomalies = ai.anomalies;
       responseData.risk_scores = ai.risk_scores;
+      responseData.issues = ai.issues;
 
       console.log(`[${new Date().toISOString()}] AI Analysis completed successfully.`);
 
@@ -157,5 +200,7 @@ const uploadFiles = async (req, res) => {
 };
 
 module.exports = {
-  uploadFiles
+  uploadFiles,
+  getPreview
 };
+

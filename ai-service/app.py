@@ -42,6 +42,10 @@ def analyze():
         ledger_df = pd.DataFrame(data['ledger'])
         bank_df = pd.DataFrame(data['bank'])
 
+        # Add row_index (1-indexed)
+        ledger_df['row_index'] = range(1, len(ledger_df) + 1)
+        bank_df['row_index'] = range(1, len(bank_df) + 1)
+
         # Basic Validation: Ledger
         required_ledger_cols = ['Transaction_Ref', 'Amount']
         missing_ledger = [col for col in required_ledger_cols if col not in ledger_df.columns]
@@ -78,8 +82,12 @@ def analyze():
             ledger_df['anomaly_score'] = model.decision_function(X_scaled)
             
             # Extract anomalies (-1 = anomaly)
-            anomalies_df = ledger_df[ledger_df['anomaly'] == -1]
-            anomalies_list = anomalies_df.drop(columns=['anomaly']).to_dict(orient='records')
+            anomalies_df = ledger_df[ledger_df['anomaly'] == -1].copy()
+            anomalies_df['issue'] = "Anomalous transaction detected"
+            
+            # Keep only specified columns
+            cols_to_keep = ['row_index', 'Transaction_Ref', 'Vendor_Name', 'Amount', 'anomaly_score', 'issue']
+            anomalies_list = anomalies_df[cols_to_keep].to_dict(orient='records')
 
         # Vendor Risk Analysis
         vendor_risk_list = []
@@ -110,35 +118,101 @@ def analyze():
                     })
 
         # Multi-factor Risk Scoring
-        risk_scores = []
         frequent_vendors = set(vendor_counts['vendor'].tolist()) if 'Vendor_Name' in ledger_df.columns else set()
         frequent_approvers = set(approver_counts['approver'].tolist()) if 'Approver_ID' in ledger_df.columns else set()
-
+        # Risk Analysis & Issues Generation
+        risk_scores = []
+        issues_list = []
         for _, row in ledger_df.iterrows():
             score = 0
             reasons = []
+            affected_fields = []
+            ri = int(row.get('row_index'))
+            tx_ref = str(row.get('Transaction_Ref'))
+            
+            # Slimmed details for modal
+            slim_details = {
+                "Transaction_Ref": tx_ref,
+                "Vendor_Name": str(row.get('Vendor_Name', 'N/A')),
+                "Amount": float(row.get('Amount', 0)),
+                "Approver_ID": str(row.get('Approver_ID', 'N/A')),
+                "Category": str(row.get('Category', 'N/A'))
+            }
             
             if row.get('anomaly') == -1:
                 score += 40
                 reasons.append("anomaly")
+                affected_fields.append("Amount")
+                issues_list.append({
+                    "row_index": ri,
+                    "transaction_ref": tx_ref,
+                    "issue_type": "anomaly",
+                    "message": "ML-detected anomalous pattern",
+                    "field": "Amount",
+                    "severity": "high",
+                    "source": "ledger",
+                    "details": slim_details
+                })
+            
             if row.get('Amount', 0) > 10000:
                 score += 20
                 reasons.append("high amount")
+                affected_fields.append("Amount")
+                issues_list.append({
+                    "row_index": ri,
+                    "transaction_ref": tx_ref,
+                    "issue_type": "high_risk",
+                    "message": "Unusually high transaction amount",
+                    "field": "Amount",
+                    "severity": "high",
+                    "source": "ledger",
+                    "details": slim_details
+                })
+            
             if str(row.get('Vendor_Name')) in frequent_vendors:
                 score += 15
                 reasons.append("frequent vendor")
+                affected_fields.append("Vendor_Name")
+            
             if str(row.get('Approver_ID')) in frequent_approvers:
                 score += 10
                 reasons.append("frequent approver")
+                affected_fields.append("Approver_ID")
+                issues_list.append({
+                    "row_index": ri,
+                    "transaction_ref": tx_ref,
+                    "issue_type": "process_risk",
+                    "message": "Approver involved in unusually high number of transactions",
+                    "field": "Approver_ID",
+                    "severity": "medium",
+                    "source": "ledger",
+                    "details": slim_details
+                })
+            
             if str(row.get('Vendor_Bank_Account')) in shared_accounts:
                 score += 15
                 reasons.append("shared bank account")
+                affected_fields.append("Vendor_Bank_Account")
+                issues_list.append({
+                    "row_index": ri,
+                    "transaction_ref": tx_ref,
+                    "issue_type": "policy_violation",
+                    "message": "Same account used across multiple vendors",
+                    "field": "Vendor_Bank_Account",
+                    "severity": "medium",
+                    "source": "ledger",
+                    "details": slim_details
+                })
             
             if score > 0:
+                # Deduplicate affected_fields
+                unique_fields = list(set(affected_fields))
                 risk_scores.append({
-                    "transaction_ref": str(row.get('Transaction_Ref')),
-                    "score": score,
-                    "reasons": reasons
+                    "row_index": ri,
+                    "transaction_ref": tx_ref,
+                    "score": int(score),
+                    "reasons": reasons,
+                    "affected_fields": unique_fields
                 })
 
         # Reconciliation Logic
@@ -149,10 +223,10 @@ def analyze():
         }
         
         if not ledger_df.empty and not bank_df.empty:
-            # Merge to compare amounts
+            # Merge to compare amounts, keeping both row indices
             recon_df = pd.merge(
-                ledger_df[['Transaction_Ref', 'Amount']], 
-                bank_df[['Transaction_Ref', 'Bank_Amount']], 
+                ledger_df[['Transaction_Ref', 'Amount', 'row_index', 'Vendor_Name', 'Approver_ID', 'Category']], 
+                bank_df[['Transaction_Ref', 'Bank_Amount', 'row_index']].rename(columns={'row_index': 'bank_row_index'}), 
                 on='Transaction_Ref', 
                 how='left'
             )
@@ -165,13 +239,50 @@ def analyze():
             missing = recon_df[recon_df['Bank_Amount'].isna()]
             reconciliation_summary['missing_count'] = len(missing)
             
+            # Add Missing Matches to Issues
+            for _, m_row in missing.iterrows():
+                issues_list.append({
+                    "row_index": int(m_row['row_index']),
+                    "transaction_ref": str(m_row['Transaction_Ref']),
+                    "issue_type": "missing_match",
+                    "message": "No matching bank transaction found",
+                    "severity": "medium",
+                    "source": "bank",
+                    "details": {
+                        "Transaction_Ref": str(m_row['Transaction_Ref']),
+                        "Vendor_Name": str(m_row.get('Vendor_Name', 'N/A')),
+                        "Amount": float(m_row.get('Amount', 0)),
+                        "Approver_ID": str(m_row.get('Approver_ID', 'N/A')),
+                        "Category": str(m_row.get('Category', 'N/A'))
+                    }
+                })
+            
             # Partial Match (difference < 5%)
             remaining = recon_df[recon_df['Bank_Amount'].notna() & (recon_df['Amount'] != recon_df['Bank_Amount'])]
             if not remaining.empty:
                 diff_pct = (remaining['Amount'] - remaining['Bank_Amount']).abs() / remaining['Amount']
                 partial = remaining[diff_pct < 0.05]
                 reconciliation_summary['partial_count'] = len(partial)
-
+                
+                # Add Partial Matches to Issues
+                for _, p_row in partial.iterrows():
+                    issues_list.append({
+                        "row_index": int(p_row['row_index']),
+                        "bank_row_index": int(p_row['bank_row_index']),
+                        "transaction_ref": str(p_row['Transaction_Ref']),
+                        "issue_type": "partial_match",
+                        "message": f"Bank amount mismatch ({p_row['Bank_Amount']} vs {p_row['Amount']})",
+                        "severity": "low",
+                        "source": "bank",
+                        "details": {
+                            "Transaction_Ref": str(p_row['Transaction_Ref']),
+                            "Vendor_Name": str(p_row.get('Vendor_Name', 'N/A')),
+                            "Amount": float(p_row.get('Amount', 0)),
+                            "Bank_Amount": float(p_row.get('Bank_Amount', 0)),
+                            "Approver_ID": str(p_row.get('Approver_ID', 'N/A')),
+                            "Category": str(p_row.get('Category', 'N/A'))
+                        }
+                    })
         # Sort risk scores descending
         risk_scores = sorted(risk_scores, key=lambda x: x['score'], reverse=True)
 
@@ -211,7 +322,8 @@ def analyze():
                 "approver_risk_top10": approver_risk_list
             },
             "anomalies": sorted(anomalies_list, key=lambda x: x['anomaly_score'])[:50],
-            "risk_scores": risk_scores[:50]
+            "risk_scores": risk_scores[:50],
+            "issues": issues_list[:100]
         }), 200
 
     except Exception as e:

@@ -66,7 +66,7 @@ const ChartsSection = ({ charts, reconciliation, insights }) => {
       {/* Charts Main Row */}
       <div className="grid grid-cols-1 gap-8 h-full">
         {/* Vendor Bar Chart */}
-        <div className="bg-[#11141b]/50 backdrop-blur-xl border border-white/5 rounded-3xl p-8 shadow-xl">
+        <div className="w-full">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-xl font-bold bg-gradient-to-r from-white to-indigo-400 bg-clip-text text-transparent">
               Top 10 High-Volume Vendors
