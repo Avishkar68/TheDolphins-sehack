@@ -13,7 +13,8 @@ const PreviewTable = ({
   pagination, 
   onPageChange, 
   issues, 
-  focusedRowIndex 
+  focusedRowIndex,
+  onRowClick
 }) => {
   const tableRef = useRef(null);
   const rowRefs = useRef({});
@@ -90,12 +91,14 @@ const PreviewTable = ({
                 <tr 
                   key={row.row_index}
                   ref={el => rowRefs.current[row.row_index] = el}
-                  className={`group transition-all duration-300 ${
+                  onClick={() => onRowClick && onRowClick(type, row.row_index)}
+                  title="Click to open this row in original spreadsheet"
+                  className={`group transition-all duration-300 cursor-pointer ${
                     isFocused 
                       ? 'bg-indigo-500/10 ring-2 ring-indigo-500/50 z-20 relative shadow-[0_0_30px_rgba(99,102,241,0.2)]' 
                       : hasIssue 
-                        ? 'hover:bg-amber-500/[0.02]' 
-                        : 'hover:bg-white/[0.02]'
+                        ? 'hover:bg-amber-500/[0.05] bg-amber-500/[0.02]' 
+                        : 'hover:bg-white/[0.05]'
                   }`}
                 >
                   <td className="px-6 py-4">

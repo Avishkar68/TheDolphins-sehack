@@ -114,6 +114,15 @@ const Dashboard = () => {
     }, 100);
   };
 
+  const handleRowClick = async (type, rowIndex) => {
+    console.log(`[Native Forge] Requesting open for ${type} at row ${rowIndex}`);
+    try {
+      await axios.post('http://localhost:4000/api/upload/open-at-row', { type, rowIndex });
+    } catch (err) {
+      console.error('Failed to trigger native forge:', err.response?.data?.message || err.message);
+    }
+  };
+
   const renderContent = () => {
     const Placeholder = ({ title, icon: Icon = Database }) => (
       <div className="flex flex-col items-center justify-center min-h-[500px] border border-white/5 bg-[#11141b]/20 backdrop-blur-xl rounded-[2.5rem] p-12 text-center relative overflow-hidden group">
@@ -199,6 +208,7 @@ const Dashboard = () => {
                 onPageChange={(p) => fetchPreview('ledger', p)}
                 issues={data?.issues || []}
                 focusedRowIndex={focusedRow?.type === 'ledger' ? focusedRow.index : null}
+                onRowClick={handleRowClick}
               />
             </div>
             <div id="bank-explorer">
@@ -209,6 +219,7 @@ const Dashboard = () => {
                 onPageChange={(p) => fetchPreview('bank', p)}
                 issues={data?.issues || []}
                 focusedRowIndex={focusedRow?.type === 'bank' ? focusedRow.index : null}
+                onRowClick={handleRowClick}
               />
             </div>
           </div>

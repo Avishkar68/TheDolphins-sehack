@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { uploadFields } = require('../middleware/uploadMiddleware');
-const { uploadFiles, getPreview, generateMemo } = require('../controllers/uploadController');
+const { uploadFiles, getPreview, generateMemo, openAtRow } = require('../controllers/uploadController');
 
 /**
  * @route POST /api/upload
@@ -23,5 +23,12 @@ router.get('/preview', getPreview);
  * @access Public
  */
 router.post('/generate-memo', generateMemo);
+
+/**
+ * @route POST /api/upload/open-at-row
+ * @desc Open source file at specific row in Excel
+ * @access Public
+ */
+router.post('/open-at-row', openAtRow);
 
 module.exports = router;

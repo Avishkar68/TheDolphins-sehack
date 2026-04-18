@@ -1,6 +1,20 @@
 const xlsx = require('xlsx');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { exec } = require('child_process');
 const validateDataset = require('../utils/validateDataset');
+
+const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+// Global store for file paths
+let filePaths = {
+  ledger: null,
+  bank: null
+};
 
 // In-memory cache for pagination (clears on server restart)
 let dataCache = {
@@ -89,6 +103,15 @@ const uploadFiles = async (req, res) => {
     }
 
     const processFile = (file, type) => {
+      // Save original file to disk for native bridge
+      const ext = path.extname(file.originalname) || '.xlsx';
+      const fileName = `${type}_${Date.now()}${ext}`;
+      const fullPath = path.join(UPLOADS_DIR, fileName);
+      
+      fs.writeFileSync(fullPath, file.buffer);
+      filePaths[type] = fullPath;
+      console.log(`[Persistence] Saved ${type} to ${fullPath}`);
+
       const workbook = xlsx.read(file.buffer, { type: 'buffer' });
       const sheetName = workbook.SheetNames[0];
       const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
@@ -197,6 +220,74 @@ const uploadFiles = async (req, res) => {
   }
 };
 
+const openAtRow = async (req, res) => {
+  const { type, rowIndex } = req.body;
+  const filePath = filePaths[type];
+
+  if (!filePath) {
+    return res.status(404).json({ 
+      success: false, 
+      message: 'Source file not found on disk. Please re-upload the file to establish a native bridge.' 
+    });
+  }
+
+  // Adjust for header: row_index 1 in app = row 2 in native apps
+  const targetRow = parseInt(rowIndex) + 1;
+
+  // Precision AppleScript (v3) with delays and active window targeting
+  const script = `
+    set targetPosixPath to "${filePath}"
+    set targetRow to ${targetRow}
+
+    try
+        -- Try Microsoft Excel
+        tell application "Microsoft Excel"
+            activate
+            open (POSIX file targetPosixPath)
+            delay 0.5 -- Essential delay for file load
+            tell active workbook
+                tell active sheet
+                    select range ("A" & targetRow)
+                    -- Force scrolling to the selection
+                    goto (range ("A" & targetRow))
+                end tell
+            end tell
+        end tell
+    on error
+        try
+            -- Fallback to Apple Numbers
+            tell application "Numbers"
+                activate
+                open (POSIX file targetPosixPath)
+                delay 0.5 -- Essential delay for file load
+                tell document 1
+                    tell sheet 1
+                        tell table 1
+                            set selection range to range ("A" & targetRow & ":Z" & targetRow)
+                        end tell
+                    end tell
+                end tell
+            end tell
+        on error
+            -- Final Fallback: Simple system open
+            do shell script ("open " & quoted form of targetPosixPath)
+        end try
+    end try
+  `;
+
+  exec(`osascript -e '${script}'`, (err) => {
+    if (err) {
+      console.error('[Native Forge] Ultimate script failure:', err.message);
+      exec(`open "${filePath}"`);
+    }
+  });
+
+  return res.status(200).json({ 
+    success: true, 
+    message: `Executing Deep Sync: Opening ${type} at row ${targetRow}` 
+  });
+};
+
 const generateMemo = async (req, res) => {
   console.log(`[${new Date().toISOString()}] Proxying AI Memo request...`);
   try {
@@ -214,6 +305,7 @@ const generateMemo = async (req, res) => {
 module.exports = {
   uploadFiles,
   getPreview,
-  generateMemo
+  generateMemo,
+  openAtRow
 };
 
