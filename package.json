@@ -1,0 +1,36 @@
+{
+  "name": "ledgerspy-desktop",
+  "version": "1.0.0",
+  "description": "LedgerSpy Forensic Engine Desktop App",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder",
+    "install:all": "cd frontend && npm install && cd ../backend && npm install && cd ../ai-service && pip install -r requirements.txt"
+  },
+  "devDependencies": {
+    "electron": "^34.5.8",
+    "electron-builder": "^25.1.8",
+    "wait-on": "^9.0.5"
+  },
+  "build": {
+    "appId": "com.ledgerspy.forensic",
+    "productName": "LedgerSpy",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "backend/**/*",
+      "ai-service/**/*",
+      "frontend/dist/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

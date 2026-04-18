@@ -12,6 +12,10 @@ app = Flask(__name__)
 
 # --- Forensic Helper Functions ---
 
+@app.route('/')
+def health_check():
+    return jsonify({"status": "ready", "engine": "LedgerSpy AI"}), 200
+
 def calculate_readiness(ledger_df, bank_df, remediations=[]):
     """Calculates a forensic readiness score based on evidence quality."""
     issues = []
