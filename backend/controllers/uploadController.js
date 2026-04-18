@@ -1,4 +1,5 @@
 const xlsx = require('xlsx');
+const axios = require('axios');
 const validateDataset = require('../utils/validateDataset');
 
 /**
@@ -76,13 +77,75 @@ const uploadFiles = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    // Prepare response structure with default values
+    let responseData = {
       success: true,
-      ledger_count: ledgerData.length,
-      bank_count: bankData.length,
-      ledger_preview: ledgerData.slice(0, 10),
-      bank_preview: bankData.slice(0, 10)
-    });
+      summary: {
+        total_records: ledgerData.length + bankData.length,
+        total_anomalies: 0,
+        high_risk_count: 0,
+        medium_risk_count: 0,
+        low_risk_count: 0
+      },
+      insights: {
+        top_risky_vendor: null,
+        top_risky_approver: null,
+        most_shared_bank_account: null
+      },
+      reconciliation: {
+        matched_count: 0,
+        partial_count: 0,
+        missing_count: 0
+      },
+      charts: {
+        vendor_risk_top10: [],
+        approver_risk_top10: []
+      },
+      anomalies: [],
+      risk_scores: [],
+      preview: {
+        ledger_preview: ledgerData.slice(0, 5),
+        bank_preview: bankData.slice(0, 5)
+      },
+      warning: null
+    };
+
+    // Call Python AI Service
+    try {
+      console.log(`[${new Date().toISOString()}] Sending data to AI Service (port 8000)...`);
+      
+      const aiResponse = await axios.post('http://localhost:8000/analyze', {
+        ledger: ledgerData,
+        bank: bankData,
+        contamination: req.body.contamination || 0.05
+      }, {
+        timeout: 20000 // 20 seconds timeout
+      });
+
+      // Merge AI Service results into the final structure
+      const ai = aiResponse.data;
+      responseData.summary = ai.summary;
+      responseData.insights = ai.insights;
+      responseData.reconciliation = ai.reconciliation;
+      responseData.charts = ai.charts;
+      responseData.anomalies = ai.anomalies;
+      responseData.risk_scores = ai.risk_scores;
+
+      console.log(`[${new Date().toISOString()}] AI Analysis completed successfully.`);
+
+    } catch (aiError) {
+      console.error('AI Service Error:', aiError.message);
+      
+      if (aiError.code === 'ECONNABORTED') {
+        responseData.warning = "AI analysis timeout (exceeded 20s). Returning preview only.";
+      } else if (aiError.code === 'ECONNREFUSED' || !aiError.response) {
+        responseData.warning = "AI Analysis service is currently unavailable. Returning preview only.";
+      } else {
+        responseData.warning = `AI Analysis failed: ${aiError.response?.data?.error || aiError.message}`;
+      }
+    }
+
+    res.status(200).json(responseData);
 
   } catch (error) {
     console.error('Upload Error:', error);

@@ -141,20 +141,77 @@ def analyze():
                     "reasons": reasons
                 })
 
+        # Reconciliation Logic
+        reconciliation_summary = {
+            "matched_count": 0,
+            "partial_count": 0,
+            "missing_count": 0
+        }
+        
+        if not ledger_df.empty and not bank_df.empty:
+            # Merge to compare amounts
+            recon_df = pd.merge(
+                ledger_df[['Transaction_Ref', 'Amount']], 
+                bank_df[['Transaction_Ref', 'Bank_Amount']], 
+                on='Transaction_Ref', 
+                how='left'
+            )
+            
+            # Matched
+            matched = recon_df[recon_df['Amount'] == recon_df['Bank_Amount']]
+            reconciliation_summary['matched_count'] = len(matched)
+            
+            # Missing in Bank
+            missing = recon_df[recon_df['Bank_Amount'].isna()]
+            reconciliation_summary['missing_count'] = len(missing)
+            
+            # Partial Match (difference < 5%)
+            remaining = recon_df[recon_df['Bank_Amount'].notna() & (recon_df['Amount'] != recon_df['Bank_Amount'])]
+            if not remaining.empty:
+                diff_pct = (remaining['Amount'] - remaining['Bank_Amount']).abs() / remaining['Amount']
+                partial = remaining[diff_pct < 0.05]
+                reconciliation_summary['partial_count'] = len(partial)
+
         # Sort risk scores descending
         risk_scores = sorted(risk_scores, key=lambda x: x['score'], reverse=True)
+
+        # Risk Summary Stats
+        high_risk = [r for r in risk_scores if r['score'] >= 80]
+        medium_risk = [r for r in risk_scores if 50 <= r['score'] < 80]
+        low_risk = [r for r in risk_scores if r['score'] < 50]
+
+        # Top Insights
+        top_risky_vendor = vendor_risk_list[0]['vendor'] if vendor_risk_list else None
+        top_risky_approver = approver_risk_list[0]['approver'] if approver_risk_list else None
+        
+        most_shared_bank_account = None
+        if bank_risk_list:
+            sorted_bank_risk = sorted(bank_risk_list, key=lambda x: x['count'], reverse=True)
+            most_shared_bank_account = sorted_bank_risk[0]['bank_account']
 
         total_records = len(ledger_df) + len(bank_df)
 
         return jsonify({
             "success": True,
-            "total_records": total_records,
-            "total_anomalies": len(anomalies_list),
-            "anomalies": anomalies_list,
-            "vendor_risk": vendor_risk_list,
-            "approver_risk": approver_risk_list,
-            "bank_risk": bank_risk_list,
-            "risk_scores": risk_scores[:100]
+            "summary": {
+                "total_records": total_records,
+                "total_anomalies": len(anomalies_list),
+                "high_risk_count": len(high_risk),
+                "medium_risk_count": len(medium_risk),
+                "low_risk_count": len(low_risk)
+            },
+            "insights": {
+                "top_risky_vendor": top_risky_vendor,
+                "top_risky_approver": top_risky_approver,
+                "most_shared_bank_account": most_shared_bank_account
+            },
+            "reconciliation": reconciliation_summary,
+            "charts": {
+                "vendor_risk_top10": vendor_risk_list,
+                "approver_risk_top10": approver_risk_list
+            },
+            "anomalies": sorted(anomalies_list, key=lambda x: x['anomaly_score'])[:50],
+            "risk_scores": risk_scores[:50]
         }), 200
 
     except Exception as e:
