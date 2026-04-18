@@ -1,18 +1,12 @@
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
-import Navbar from './components/Navbar';
-import Footer from './components/Footer';
 
-import Home from './pages/Home';
-import About from './pages/About';
-import Contact from './pages/Contact';
+import Dashboard from './pages/Dashboard';
 import NotFound from './pages/NotFound';
 
 const Layout = () => {
   return (
     <div className='font-inter bg-mainbg min-h-screen text-white'>
-      <Navbar />
       <Outlet />
-      <Footer />
     </div>
   );
 };
@@ -24,15 +18,11 @@ const router = createBrowserRouter([
     children: [
       {
         index: true, // default route
-        element: <Home />,
+        element: <Dashboard />, // Temporary default for testing
       },
       {
-        path: 'about',
-        element: <About />,
-      },
-      {
-        path: 'contact',
-        element: <Contact />,
+        path: 'dashboard',
+        element: <Dashboard />,
       },
       {
         path: '*',
