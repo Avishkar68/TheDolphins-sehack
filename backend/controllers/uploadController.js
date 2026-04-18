@@ -173,6 +173,7 @@ const uploadFiles = async (req, res) => {
       responseData.anomalies = ai.anomalies;
       responseData.risk_scores = ai.risk_scores;
       responseData.issues = ai.issues;
+      responseData.forensic = ai.forensic;
 
       console.log(`[${new Date().toISOString()}] AI Analysis completed successfully.`);
 
@@ -180,7 +181,7 @@ const uploadFiles = async (req, res) => {
       console.error('AI Service Error:', aiError.message);
       
       if (aiError.code === 'ECONNABORTED') {
-        responseData.warning = "AI analysis timeout (exceeded 20s). Returning preview only.";
+        responseData.warning = "AI analysis timeout (exceeded 60s). Returning preview only.";
       } else if (aiError.code === 'ECONNREFUSED' || !aiError.response) {
         responseData.warning = "AI Analysis service is currently unavailable. Returning preview only.";
       } else {
@@ -199,8 +200,23 @@ const uploadFiles = async (req, res) => {
   }
 };
 
+const generateMemo = async (req, res) => {
+  console.log(`[${new Date().toISOString()}] Proxying AI Memo request...`);
+  try {
+    const aiResponse = await axios.post('http://localhost:8000/generate-memo', req.body);
+    return res.status(200).json(aiResponse.data);
+  } catch (error) {
+    console.error('AI Memo Proxy Error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to communicate with local AI service.'
+    });
+  }
+};
+
 module.exports = {
   uploadFiles,
-  getPreview
+  getPreview,
+  generateMemo
 };
 

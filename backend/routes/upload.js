@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { uploadFields } = require('../middleware/uploadMiddleware');
-const { uploadFiles, getPreview } = require('../controllers/uploadController');
+const { uploadFiles, getPreview, generateMemo } = require('../controllers/uploadController');
 
 /**
  * @route POST /api/upload
@@ -16,5 +16,12 @@ router.post('/', uploadFields, uploadFiles);
  * @access Public
  */
 router.get('/preview', getPreview);
+
+/**
+ * @route POST /api/upload/generate-memo
+ * @desc Proxy memo generation to AI service
+ * @access Public
+ */
+router.post('/generate-memo', generateMemo);
 
 module.exports = router;

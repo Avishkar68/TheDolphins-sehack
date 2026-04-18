@@ -3,8 +3,180 @@ import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import IsolationForest
+from rapidfuzz import fuzz, process
+import networkx as nx
+import json
+import requests
 
 app = Flask(__name__)
+
+# --- Forensic Helper Functions ---
+
+def calculate_readiness(ledger_df, bank_df):
+    """Calculates data integrity readiness score and issues."""
+    issues = []
+    
+    # Ledger Checks
+    ledger_nulls = ledger_df.isnull().sum().sum()
+    if ledger_nulls > 0:
+        issues.append({"category": "Null Values", "count": int(ledger_nulls), "type": "ledger"})
+        
+    ledger_dupes = ledger_df.duplicated(subset=['Transaction_Ref']).sum()
+    if ledger_dupes > 0:
+        issues.append({"category": "Duplicates", "count": int(ledger_dupes), "type": "ledger"})
+        
+    # Bank Checks
+    bank_nulls = bank_df.isnull().sum().sum()
+    if bank_nulls > 0:
+        issues.append({"category": "Null Values", "count": int(bank_nulls), "type": "bank"})
+        
+    # Readiness Score Calculation (0-100)
+    # Simple penalty based on nulls and duplicates relative to size
+    total_size = len(ledger_df) + len(bank_df)
+    penalties = (ledger_nulls + bank_nulls + ledger_dupes) / (total_size * 5) # normalize
+    score = max(0, 100 * (1 - penalties))
+    
+    return {
+        "score": round(score, 1),
+        "issues": issues,
+        "metrics": {
+            "ledger_completeness": round((1 - ledger_nulls/max(1, len(ledger_df)*len(ledger_df.columns))) * 100, 1),
+            "bank_completeness": round((1 - bank_nulls/max(1, len(bank_df)*len(bank_df.columns))) * 100, 1)
+        }
+    }
+
+def compute_benford(df, column='Amount'):
+    """Performs Benford's Law analysis on leading digits."""
+    if column not in df.columns:
+        return []
+    
+    # Extract first significant digit
+    def get_first_digit(x):
+        try:
+            val = abs(float(x))
+            if val == 0: return None
+            s = str(val).replace('0.', '').replace('.', '')
+            for char in s:
+                if char in '123456789':
+                    return int(char)
+            return None
+        except:
+            return None
+
+    digits = df[column].apply(get_first_digit).dropna().astype(int)
+    counts = digits.value_counts().reindex(range(1, 10), fill_value=0)
+    total = len(digits)
+    
+    actual_dist = (counts / total * 100).round(2).tolist()
+    
+    # Benford's Law distribution (log10(1 + 1/d))
+    benford_target = [30.1, 17.6, 12.5, 9.7, 7.9, 6.7, 5.8, 5.1, 4.6]
+    
+    return [
+        {"digit": d, "actual": a, "target": t} 
+        for d, a, t in zip(range(1, 10), actual_dist, benford_target)
+    ]
+
+def find_fuzzy_entities(df, column='Vendor_Name', threshold=85):
+    """Detects highly similar entity names (potential ghost vendors)."""
+    if column not in df.columns or df[column].nunique() < 2:
+        return []
+    
+    names = df[column].dropna().unique().tolist()
+    matches = []
+    
+    for i, name1 in enumerate(names):
+        for name2 in names[i+1:]:
+            score = fuzz.ratio(name1, name2)
+            if score >= threshold:
+                matches.append({
+                    "entity1": name1,
+                    "entity2": name2,
+                    "similarity": round(score, 1)
+                })
+    
+    return sorted(matches, key=lambda x: x['similarity'], reverse=True)[:20]
+
+def build_relational_graph(df):
+    """Constructs a node-link graph for relational risk mapping."""
+    G = nx.Graph()
+    
+    # Logic: Connect Vendors to Approvers via Transactions
+    if 'Vendor_Name' not in df.columns or 'Approver_ID' not in df.columns:
+        return {"nodes": [], "links": []}
+    
+    # Aggregate links
+    links_df = df.groupby(['Vendor_Name', 'Approver_ID']).agg({
+        'Amount': 'sum',
+        'Transaction_Ref': 'count'
+    }).reset_index()
+    
+    # Node tracking
+    nodes = {}
+    
+    def add_node(name, ntype):
+        if name not in nodes:
+            nodes[name] = {"id": name, "type": ntype, "val": 0, "risk": 0}
+            
+    for _, row in links_df.iterrows():
+        vendor = str(row['Vendor_Name'])
+        approver = str(row['Approver_ID'])
+        val = float(row['Amount'])
+        
+        add_node(vendor, "vendor")
+        add_node(approver, "approver")
+        
+        nodes[vendor]['val'] += val
+        nodes[approver]['val'] += val
+        
+        G.add_edge(vendor, approver, weight=val)
+    
+    # Format for react-force-graph
+    node_list = []
+    for n in nodes.values():
+        # High value = larger node
+        node_list.append(n)
+        
+    link_list = []
+    for u, v, d in G.edges(data=True):
+        link_list.append({"source": u, "target": v, "value": d['weight']})
+        
+    return {"nodes": node_list, "links": link_list}
+
+def run_monte_carlo(df, months=12, iterations=1000):
+    """Simulates cash flow using Monte Carlo for Going Concern stress testing."""
+    if 'Amount' not in df.columns:
+        return []
+    
+    # Convert amounts to daily/monthly mean and volatility
+    # This is a simplification: assume expenditures follow a normal distribution
+    mean_out = df['Amount'].mean()
+    std_out = df['Amount'].std()
+    
+    # Assume starting balance $50k (mock)
+    start_balance = 50000 
+    
+    results = []
+    for month in range(months + 1):
+        # Calculate percentiles for scenario bands
+        # monthly_out ~ Normal(mean_out * 30, std_out * sqrt(30)) - highly simplified
+        m_mean = mean_out * 20 # 20 transactions per month avg
+        m_std = std_out * np.sqrt(20)
+        
+        # Simulate ending balances
+        # In a real audit, we'd have revenue too. Here we simulate "Cash Burn"
+        balances = start_balance - np.random.normal(m_mean * month, m_std * np.sqrt(month if month > 0 else 1), iterations)
+        
+        results.append({
+            "month": month,
+            "mean": float(np.mean(balances)),
+            "safe": float(np.percentile(balances, 75)),
+            "critical": float(np.percentile(balances, 25))
+        })
+        
+    return results
+
+# --- End Forensic Helpers ---
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -286,6 +458,16 @@ def analyze():
         # Sort risk scores descending
         risk_scores = sorted(risk_scores, key=lambda x: x['score'], reverse=True)
 
+        # --- New LedgerSpy Forensic Integration ---
+        forensic_data = {
+            "readiness": calculate_readiness(ledger_df, bank_df),
+            "benford": compute_benford(ledger_df),
+            "fuzzy_entities": find_fuzzy_entities(ledger_df),
+            "relational_map": build_relational_graph(ledger_df),
+            "monte_carlo": run_monte_carlo(ledger_df)
+        }
+        # --- End Forensic Integration ---
+
         # Risk Summary Stats
         high_risk = [r for r in risk_scores if r['score'] >= 80]
         medium_risk = [r for r in risk_scores if 50 <= r['score'] < 80]
@@ -323,15 +505,72 @@ def analyze():
             },
             "anomalies": sorted(anomalies_list, key=lambda x: x['anomaly_score'])[:50],
             "risk_scores": risk_scores[:50],
-            "issues": issues_list[:100]
+            "issues": issues_list[:100],
+            "forensic": forensic_data
         }), 200
 
     except Exception as e:
+        import traceback
+        print(traceback.format_exc())
         return jsonify({
             "success": False,
             "error": f"Internal server error: {str(e)}"
         }), 500
 
+@app.route('/generate-memo', methods=['POST'])
+def generate_memo():
+    """Generates an automated audit memo using local Llama 3.1 via Ollama."""
+    data = request.get_json()
+    summary = data.get('summary', {})
+    issues = data.get('issues', [])
+    
+    # Construct prompt for Llama 3.1
+    prompt = f"""
+    Act as an expert CA Forensic Sidekick named Avishkar. 
+    You are performing a high-stakes audit. 
+    Based on the following findings, draft a professional, concise, and standard-accounting-tone audit memo.
+    
+    SUMMARY:
+    - Total Records: {summary.get('total_records')}
+    - Critical Anomalies: {summary.get('total_anomalies', 0)}
+    - High Risk Count: {summary.get('high_risk_count', 0)}
+    
+    ISSUES DETECTED:
+    {json.dumps(issues[:5], indent=2)}
+    
+    Structure the memo with sections:
+    1. Executive Summary
+    2. Significant Findings
+    3. Recommended Next Steps
+    
+    Tone: Professional, Objective, Forensic.
+    """
+    
+    try:
+        # Communicate with Ollama
+        response = requests.post('http://localhost:11434/api/generate', json={
+            "model": "phi3:latest",
+            "prompt": prompt,
+            "stream": False
+        }, timeout=120)
+        
+        if response.status_code == 200:
+            return jsonify({
+                "success": True,
+                "memo": response.json().get('response')
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Ollama service error"
+            }), 502
+            
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": f"Failed to reach local LLM: {str(e)}"
+        }), 503
+
 if __name__ == '__main__':
-    # Run on port 8000
     app.run(port=8000, debug=True)
+

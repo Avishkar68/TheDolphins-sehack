@@ -4,7 +4,40 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <title>LedgerSpy Forensic Suite</title>
+    <script>
+      // More complete stub for AFRAME to prevent react-force-graph crashes
+      window.AFRAME = window.AFRAME || {
+        registerComponent: function() {},
+        registerSystem: function() {},
+        registerPrimitive: function() {},
+        registerShader: function() {}
+      };
+      // Enhanced Stub for THREE to satisfy initialization of bundled libraries
+      window.THREE = window.THREE || {
+        Vector3: function() { this.x = 0; this.y = 0; this.z = 0; },
+        Vector2: function() { this.x = 0; this.y = 0; },
+        Quaternion: function() { this.x = 0; this.y = 0; this.z = 0; this.w = 1; },
+        Matrix4: function() { this.elements = new Float32Array(16); },
+        Euler: function() { this.x = 0; this.y = 0; this.z = 0; },
+        Box3: function() { this.min = {x:0,y:0,z:0}; this.max = {x:0,y:0,z:0}; },
+        Sphere: function() { this.center = {x:0,y:0,z:0}; this.radius = 0; },
+        Raycaster: function() { this.ray = {origin:{x:0,y:0,z:0}, direction:{x:0,y:0,z:0}}; },
+        Ray: function() {},
+        Plane: function() {},
+        BufferGeometry: function() { this.attributes = {}; this.setIndex = function(){}; this.setAttribute = function(){}; },
+        Object3D: function() { this.position = {x:0,y:0,z:0}; this.rotation = {x:0,y:0,z:0}; this.scale = {x:1,y:1,z:1}; this.add = function(){}; },
+        Group: function() { this.add = function(){}; },
+        Mesh: function() { this.add = function(){}; },
+        Line: function() { this.add = function(){}; },
+        Points: function() { this.add = function(){}; },
+        Float32BufferAttribute: function() {},
+        Color: function() { this.r = 0; this.g = 0; this.b = 0; },
+        Scene: function() {},
+        PerspectiveCamera: function() {},
+        WebGLRenderer: function() { this.setSize = function(){}; this.render = function(){}; this.domElement = document.createElement('canvas'); }
+      };
+    </script>
   </head>
   <body>
     <div id="root"></div>
