@@ -1,0 +1,3 @@
+Transaction_Ref,Amount,Vendor_Name,Vendor_Bank_Account,Date
+TXN001,1500.50,TechCorp,123456789,2024-03-15
+TXN002,200.00,Foodies,987654321,2024-03-16
