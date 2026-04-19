@@ -9,11 +9,12 @@ import PreviewTable from '../components/PreviewTable';
 import IntegrityMonitor from '../components/IntegrityMonitor';
 import RiskExplainer from '../components/RiskExplainer';
 import BankReconView from '../components/BankReconView';
+import SectorBenchmarking from '../components/SectorBenchmarking';
 import FrequencyCharts from '../components/FrequencyCharts';
 import MonteCarloPlot from '../components/MonteCarloPlot';
 import AuditMemoAssistant from '../components/AuditMemoAssistant';
 import FuzzyMatrix from '../components/FuzzyMatrix';
-import { AlertCircle, Loader2, Sparkles, Database, RefreshCw } from 'lucide-react';
+import { AlertCircle, Loader2, Sparkles, Database, RefreshCw, Globe } from 'lucide-react';
 
 // Error Boundary component for resilient UI
 class ErrorBoundary extends React.Component {
@@ -235,6 +236,10 @@ const Dashboard = () => {
       case 'explain':
         if (!data) return <Placeholder title="Explainable Risk Insights" icon={Search} />;
         return <RiskExplainer riskScores={data.risk_scores} />;
+
+      case 'benchmarking':
+        if (!data) return <Placeholder title="Industry Benchmarking" icon={Globe} />;
+        return <SectorBenchmarking summary={data.summary} />;
 
       case 'bank-comparison':
         if (!data) return <Placeholder title="Bank Statement Reconciliation" icon={FileText} />;

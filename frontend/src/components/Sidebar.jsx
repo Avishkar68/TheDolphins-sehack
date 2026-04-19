@@ -8,7 +8,8 @@ import {
   MessageSquare,
   Activity,
   FileText,
-  Search
+  Search,
+  Globe
 } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab }) => {
@@ -20,12 +21,13 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
     { id: 'recon', icon: Scale, label: 'Recon Audit' },
     { id: 'bank-comparison', icon: FileText, label: 'Bank Comparison' },
     { id: 'resilience', icon: Shield, label: 'Resilience Test' },
+    { id: 'benchmarking', icon: Globe, label: 'Sector Benchmarking' },
     { id: 'memo', icon: MessageSquare, label: 'Audit Sidekick' },
     { id: 'explain', icon: Search, label: 'Explainable Risk' },
   ];
 
   return (
-    <div className="w-64 h-screen sticky top-0 bg-[#0d1117]/80 backdrop-blur-2xl border-r border-white/5 flex flex-col pt-8 z-30">
+    <div className="w-70 h-screen sticky top-0 bg-[#0d1117]/80 backdrop-blur-2xl border-r border-white/5 flex flex-col pt-8 z-30">
       {/* Branding */}
       <div className="px-6 mb-12">
         <div className="flex items-center space-x-3 group cursor-pointer">
