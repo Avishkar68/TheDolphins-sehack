@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
 
 import Dashboard from './pages/Dashboard';
+import Landing from './pages/Landing';
 import NotFound from './pages/NotFound';
 
 const Layout = () => {
@@ -17,8 +18,8 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       {
-        index: true, // default route
-        element: <Dashboard />, // Temporary default for testing
+        index: true,
+        element: <Landing />,
       },
       {
         path: 'dashboard',

@@ -8,10 +8,10 @@ const NotFound = () => {
       <div className="relative z-10 space-y-6">
         <h2 className="text-4xl font-bold text-white">Page Not Found</h2>
         <p className="text-gray-400 max-w-md mx-auto">
-          The tactical intelligence page you are looking for has been moved or encrypted. 
+          The tactical intelligence page you are looking for has been moved or encrypted.
         </p>
-        <Link 
-          to="/" 
+        <Link
+          to="/"
           className="inline-block px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all"
         >
           Return to Dashboard
