@@ -194,6 +194,7 @@ const uploadFiles = async (req, res) => {
       responseData.risk_scores = ai.risk_scores;
       responseData.issues = ai.issues;
       responseData.forensic = ai.forensic;
+      responseData.reconciliation_list = ai.reconciliation_list;
 
       console.log(`[${new Date().toISOString()}] AI Analysis completed successfully.`);
 

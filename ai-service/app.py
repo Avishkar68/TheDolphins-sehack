@@ -448,88 +448,73 @@ def analyze():
         reconciliation_summary = {
             "matched_count": 0,
             "partial_count": 0,
-            "missing_count": 0
+            "missing_count": 0,
+            "unrecognized_count": 0
         }
         
         if not ledger_df.empty and not bank_df.empty:
-            # Merge to compare amounts, keeping both row indices
+            # Force Transaction_Ref to string for robust matching
+            ledger_df['Transaction_Ref'] = ledger_df['Transaction_Ref'].astype(str).str.strip()
+            bank_df['Transaction_Ref'] = bank_df['Transaction_Ref'].astype(str).str.strip()
+
+            # Merge to compare, using OUTER join to find orphans on both sides
             recon_df = pd.merge(
                 ledger_df[['Transaction_Ref', 'Amount', 'row_index', 'Vendor_Name', 'Approver_ID', 'Category']], 
                 bank_df[['Transaction_Ref', 'Bank_Amount', 'row_index']].rename(columns={'row_index': 'bank_row_index'}), 
                 on='Transaction_Ref', 
-                how='left'
+                how='outer'
             )
             
-            # Matched
-            matched = recon_df[recon_df['Amount'] == recon_df['Bank_Amount']]
-            reconciliation_summary['matched_count'] = len(matched)
-            
-            # Missing in Bank
-            missing = recon_df[recon_df['Bank_Amount'].isna()]
-            reconciliation_summary['missing_count'] = len(missing)
-            
-            # Add Missing Matches to Issues
-            for _, m_row in missing.iterrows():
-                issues_list.append({
-                    "row_index": int(m_row['row_index']),
-                    "transaction_ref": str(m_row['Transaction_Ref']),
-                    "issue_type": "missing_match",
-                    "message": "No matching bank transaction found",
-                    "severity": "medium",
-                    "source": "bank",
-                    "details": {
-                        "Transaction_Ref": str(m_row['Transaction_Ref']),
-                        "Vendor_Name": str(m_row.get('Vendor_Name', 'N/A')),
-                        "Amount": float(m_row.get('Amount', 0)),
-                        "Approver_ID": str(m_row.get('Approver_ID', 'N/A')),
-                        "Category": str(m_row.get('Category', 'N/A'))
-                    }
-                })
-            
-            # Partial Match (difference < 5%)
-            remaining = recon_df[recon_df['Bank_Amount'].notna() & (recon_df['Amount'] != recon_df['Bank_Amount'])]
-            if not remaining.empty:
-                diff_pct = (remaining['Amount'] - remaining['Bank_Amount']).abs() / remaining['Amount']
-                partial = remaining[diff_pct < 0.05]
-                reconciliation_summary['partial_count'] = len(partial)
-                
-                # Add Partial Matches to Issues
-                for _, p_row in partial.iterrows():
-                    issues_list.append({
-                        "row_index": int(p_row['row_index']),
-                        "bank_row_index": int(p_row['bank_row_index']),
-                        "transaction_ref": str(p_row['Transaction_Ref']),
-                        "issue_type": "partial_match",
-                        "message": f"Bank amount mismatch ({p_row['Bank_Amount']} vs {p_row['Amount']})",
-                        "severity": "low",
-                        "source": "bank",
-                        "details": {
-                            "Transaction_Ref": str(p_row['Transaction_Ref']),
-                            "Vendor_Name": str(p_row.get('Vendor_Name', 'N/A')),
-                            "Amount": float(p_row.get('Amount', 0)),
-                            "Bank_Amount": float(p_row.get('Bank_Amount', 0)),
-                            "Approver_ID": str(p_row.get('Approver_ID', 'N/A')),
-                            "Category": str(p_row.get('Category', 'N/A'))
-                        }
-                    })
-            # Complete Reconciliation List (Side-by-Side)
+            # --- Robust Classification ---
             reconciliation_list = []
             for _, row in recon_df.iterrows():
-                status = "missing"
-                if pd.notna(row['Bank_Amount']):
-                    if row['Amount'] == row['Bank_Amount']:
+                tx_ref = str(row['Transaction_Ref'])
+                l_amt = row['Amount']
+                b_amt = row['Bank_Amount']
+                
+                # Case 1: Exists in both (Matched or Partial)
+                if pd.notna(l_amt) and pd.notna(b_amt):
+                    if abs(float(l_amt) - float(b_amt)) < 0.01:
                         status = "matched"
+                        reconciliation_summary['matched_count'] += 1
                     else:
                         status = "partial"
+                        reconciliation_summary['partial_count'] += 1
+                        # Flag large mismatches as issues
+                        issues_list.append({
+                            "row_index": int(row['row_index']) if pd.notna(row['row_index']) else -1,
+                            "transaction_ref": tx_ref,
+                            "issue_type": "amount_mismatch",
+                            "message": f"Variance detected: {b_amt} (Bank) vs {l_amt} (Ledger)",
+                            "severity": "high",
+                            "source": "recon"
+                        })
                 
+                # Case 2: In Ledger, Missing in Bank
+                elif pd.notna(l_amt):
+                    status = "missing"
+                    reconciliation_summary['missing_count'] += 1
+                
+                # Case 3: In Bank, Missing in Ledger (Unrecorded)
+                else:
+                    status = "unrecognized"
+                    reconciliation_summary['unrecognized_count'] += 1
+                    issues_list.append({
+                        "transaction_ref": tx_ref,
+                        "issue_type": "unrecorded_transaction",
+                        "message": "Transaction found in Bank Statement but missing from General Ledger",
+                        "severity": "medium",
+                        "source": "bank"
+                    })
+
                 reconciliation_list.append({
-                    "ref": str(row['Transaction_Ref']),
-                    "ledger_amount": float(row['Amount']),
-                    "bank_amount": float(row['Bank_Amount']) if pd.notna(row['Bank_Amount']) else None,
-                    "vendor": str(row.get('Vendor_Name', 'N/A')),
-                    "category": str(row.get('Category', 'N/A')),
+                    "ref": tx_ref,
+                    "ledger_amount": float(l_amt) if pd.notna(l_amt) else 0.0,
+                    "bank_amount": float(b_amt) if pd.notna(b_amt) else None,
+                    "vendor": str(row.get('Vendor_Name', 'N/A')) if pd.notna(row.get('Vendor_Name')) else "External Payment",
+                    "category": str(row.get('Category', 'N/A')) if pd.notna(row.get('Category')) else "Unclassified",
                     "status": status,
-                    "row_index": int(row['row_index'])
+                    "row_index": int(row['row_index']) if pd.notna(row['row_index']) else -1
                 })
 
         # Sort risk scores descending

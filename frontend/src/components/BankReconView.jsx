@@ -24,13 +24,15 @@ const BankReconView = ({ reconciliationList = [] }) => {
   const stats = {
     matched: reconciliationList.filter(i => i.status === 'matched').length,
     partial: reconciliationList.filter(i => i.status === 'partial').length,
-    missing: reconciliationList.filter(i => i.status === 'missing').length
+    missing: reconciliationList.filter(i => i.status === 'missing').length,
+    unrecognized: reconciliationList.filter(i => i.status === 'unrecognized').length
   };
 
   const statusConfig = {
     matched: { icon: CheckCircle2, bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', label: 'Verified' },
-    partial: { icon: AlertTriangle, bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', label: 'Amount Mismatch' },
-    missing: { icon: XCircle, bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400', label: 'Missing Evidence' }
+    partial: { icon: AlertTriangle, bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', label: 'Mismatch' },
+    missing: { icon: XCircle, bg: 'bg-red-500/10', border: 'border-red-500/20', text: 'text-red-400', label: 'Missing' },
+    unrecognized: { icon: Info, bg: 'bg-indigo-500/10', border: 'border-indigo-500/20', text: 'text-indigo-400', label: 'Unrecorded' }
   };
 
   return (
@@ -47,8 +49,9 @@ const BankReconView = ({ reconciliationList = [] }) => {
 
         <div className="flex items-center space-x-3">
           <StatBadge count={stats.matched} color="emerald" label="Matched" />
-          <StatBadge count={stats.partial} color="amber" label="Partial" />
+          <StatBadge count={stats.partial} color="amber" label="Mismatch" />
           <StatBadge count={stats.missing} color="red" label="Missing" />
+          <StatBadge count={stats.unrecognized} color="indigo" label="Unrecorded" />
         </div>
       </div>
 
@@ -64,8 +67,8 @@ const BankReconView = ({ reconciliationList = [] }) => {
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <div className="flex items-center space-x-2 bg-[#11141b]/40 border border-white/5 rounded-2xl p-1.5">
-          {['all', 'matched', 'partial', 'missing'].map(s => (
+        <div className="flex items-center space-x-2 bg-[#11141b]/40 border border-white/5 rounded-2xl p-1.5 flex-wrap">
+          {['all', 'matched', 'partial', 'missing', 'unrecognized'].map(s => (
             <button
               key={s}
               onClick={() => setFilter(s)}
@@ -73,7 +76,7 @@ const BankReconView = ({ reconciliationList = [] }) => {
                 filter === s ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-gray-500 hover:text-gray-300'
               }`}
             >
-              {s}
+              {s === 'unrecognized' ? 'unrecorded' : s}
             </button>
           ))}
         </div>
