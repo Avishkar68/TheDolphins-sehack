@@ -47,11 +47,18 @@ const SummaryCards = ({ summary, reconciliation }) => {
     },
     {
       label: 'Reconciliation',
-      value: `${((reconciliation.matched_count / total_records) * 100).toFixed(1)}%`,
+      value: (() => {
+        const ledgerTotal = (reconciliation.matched_count || 0) + (reconciliation.partial_count || 0) + (reconciliation.missing_count || 0);
+        if (ledgerTotal === 0) return '0.0%';
+        const coverage = (((reconciliation.matched_count || 0) + (reconciliation.partial_count || 0)) / ledgerTotal) * 100;
+        return `${coverage.toFixed(1)}%`;
+      })(),
       icon: CheckCircle2,
       color: 'emerald',
-      trend: `${reconciliation.matched_count} Perfect Matches`,
-      subIcon: CheckCircle2
+      trend: reconciliation.partial_count > 0 
+        ? `${reconciliation.partial_count} Variances Detected` 
+        : `${reconciliation.matched_count} Perfect Matches`,
+      subIcon: reconciliation.partial_count > 0 ? AlertTriangle : CheckCircle2
     }
   ];
 
