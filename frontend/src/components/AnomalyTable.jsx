@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   ShieldAlert, 
   AlertTriangle, 
@@ -129,16 +130,19 @@ const AnomalyTable = ({ issues, onNavigate }) => {
         </table>
       </div>
 
-      {/* Detail Modal */}
-      {selectedIssue && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Detail Modal - Using React Portal to break out of local stacking context */}
+      {selectedIssue && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6 md:p-8 animate-in fade-in duration-300">
+          {/* Backdrop with intense blur covers EVERYTHING */}
           <div 
-            className="absolute inset-0 bg-black/80 backdrop-blur-md" 
+            className="absolute inset-0 bg-black/90 backdrop-blur-xl cursor-default" 
             onClick={() => setSelectedIssue(null)}
           />
-          <div className="relative bg-[#0f1218] border border-white/10 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          
+          {/* Modal Container */}
+          <div className="relative bg-[#0f1218] border border-white/10 rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-[0_0_150px_rgba(0,0,0,0.8)] flex flex-col animate-in zoom-in-95 slide-in-from-bottom-10 duration-500">
             {/* Modal Header */}
-            <div className="p-6 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+            <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
               <div className="flex items-center space-x-3">
                 <span className={`w-2 h-2 rounded-full animate-pulse ${selectedIssue.severity === 'high' ? 'bg-red-500' : 'bg-yellow-500'}`} />
                 <h2 className="text-lg font-bold text-white tracking-tight">
@@ -246,7 +250,8 @@ const AnomalyTable = ({ issues, onNavigate }) => {
                </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
